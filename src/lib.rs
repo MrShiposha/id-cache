@@ -73,7 +73,7 @@ impl<T> Storage<T> {
         self.id_cache.release_id(id);
     }
 
-    pub fn clear(&self) {
+    pub fn reset_ids(&self) {
         self.id_cache.reset();
     }
 
@@ -173,7 +173,7 @@ mod tests {
         *storage.get_mut(id) *= 2;
         assert_eq!(*storage.get(id), 10 * 2);
 
-        storage.clear();
+        storage.reset_ids();
         assert!(storage.is_empty());
         assert_eq!(storage.data.len(), 2);
 
