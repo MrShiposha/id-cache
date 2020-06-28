@@ -87,6 +87,10 @@ impl<T> Storage<T> {
     pub fn is_empty(&self) -> bool {
         self.id_cache.top_id.load(Ordering::Acquire) == 0
     }
+
+    pub fn data(&self) -> &Vec<T> {
+        &self.data
+    }
 }
 
 
@@ -148,6 +152,7 @@ mod tests {
         let mut storage = Storage::new();
         assert!(storage.is_empty());
         assert_eq!(storage.data.len(), 0);
+        assert_eq!(*storage.data(), vec![]);
 
 
         let id = storage.insert(42);
@@ -157,6 +162,7 @@ mod tests {
         assert_eq!(*storage.get(id), 42);
         *storage.get_mut(id) *= 2;
         assert_eq!(*storage.get(id), 42 * 2);
+        assert_eq!(*storage.data(), vec![42 * 2]);
 
         let first_id = id;
 
@@ -167,10 +173,12 @@ mod tests {
         assert_eq!(*storage.get(id), 111);
         *storage.get_mut(id) *= 2;
         assert_eq!(*storage.get(id), 111 * 2);
+        assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
 
         storage.remove(first_id);
         assert!(!storage.is_empty());
         assert_eq!(storage.data.len(), 2);
+        assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
 
         let id = storage.insert(10);
         assert_eq!(id, 0);
@@ -179,10 +187,12 @@ mod tests {
         assert_eq!(*storage.get(id), 10);
         *storage.get_mut(id) *= 2;
         assert_eq!(*storage.get(id), 10 * 2);
+        assert_eq!(*storage.data(), vec![10 * 2, 111 * 2]);
 
         storage.reset_ids();
         assert!(storage.is_empty());
         assert_eq!(storage.data.len(), 2);
+        assert_eq!(*storage.data(), vec![10 * 2, 111 * 2]);
 
         let id = storage.insert(42);
         assert_eq!(id, 0);
@@ -191,10 +201,12 @@ mod tests {
         assert_eq!(*storage.get(id), 42);
         *storage.get_mut(id) *= 2;
         assert_eq!(*storage.get(id), 42 * 2);
+        assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
 
         let storage = Storage::<i32>::with_capacity(10);
         assert!(storage.is_empty());
         assert_eq!(storage.data.capacity(), 10);
         assert_eq!(storage.data.len(), 0);
+        assert_eq!(*storage.data(), vec![]);
     }
 }
