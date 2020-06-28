@@ -49,6 +49,13 @@ impl<T> Storage<T> {
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(capacity),
+            id_cache: IdCache::new()
+        }
+    }
+
     pub fn insert(&mut self, new_data: T) -> Id {
         let id = self.id_cache.acquire_id();
 
@@ -184,5 +191,10 @@ mod tests {
         assert_eq!(*storage.get(id), 42);
         *storage.get_mut(id) *= 2;
         assert_eq!(*storage.get(id), 42 * 2);
+
+        let storage = Storage::<i32>::with_capacity(10);
+        assert!(storage.is_empty());
+        assert_eq!(storage.data.capacity(), 10);
+        assert_eq!(storage.data.len(), 0);
     }
 }
