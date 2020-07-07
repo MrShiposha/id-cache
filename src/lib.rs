@@ -58,14 +58,20 @@ impl<T> Storage<T> {
 
     pub fn insert(&mut self, new_data: T) -> Id {
         let id = self.id_cache.acquire_id();
-
-        if id == self.data.len() {
-            self.data.push(new_data);
-        } else {
-            self.data[id] = new_data;
-        }
+        self.insert_with_id(id, new_data);
 
         id
+    }
+
+    pub fn insert_with_id(&mut self, id: Id, new_data: T) {
+        let len = self.data.len();
+        if id == len {
+            self.data.push(new_data);
+        } else if id < len {
+            self.data[id] = new_data;
+        } else {
+            panic!("`id` is out of valid range");
+        }
     }
 
     pub fn get(&self, id: Id) -> &T {
