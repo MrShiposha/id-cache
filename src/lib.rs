@@ -27,13 +27,19 @@ impl IdCache {
     }
 
     pub fn acquire_id(&self) -> Id {
-        match self.free_ids.write().unwrap().pop() {
+        match self.try_acquire_id() {
             Some(id) => id,
             None => self.top_id.fetch_add(1, Ordering::AcqRel)
         }
     }
 
+    pub fn try_acquire_id(&self) -> Option<Id> {
+        self.free_ids.write().unwrap().pop()
+    }
+
     pub fn release_id(&self, id: Id) {
+        assert!(id < self.top_id.load(Ordering::Acquire));
+
         self.free_ids.write().unwrap().push(id);
     }
 
@@ -191,6 +197,19 @@ mod tests {
         assert_eq!(cache.top_id.load(Ordering::Acquire), capacity + 1);
         assert_eq!(*cache.free_ids.read().unwrap(), vec![9]);
         assert_eq!(cache.free_ids_num(), 1);
+    }
+
+    #[test]
+    fn test_try_acquire_id() {
+        let cache = IdCache::new();
+
+        assert!(cache.try_acquire_id().is_none());
+
+        let src_id = cache.acquire_id();
+        cache.release_id(src_id);
+        let freed_id = cache.try_acquire_id();
+        assert!(freed_id.is_some());
+        assert_eq!(freed_id.unwrap(), src_id);
     }
 
     #[test]
