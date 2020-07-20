@@ -19,6 +19,13 @@ impl IdCache {
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            top_id: capacity.into(),
+            free_ids: RwLock::new((0..capacity).collect())
+        }
+    }
+
     pub fn acquire_id(&self) -> Id {
         match self.free_ids.write().unwrap().pop() {
             Some(id) => id,
@@ -33,6 +40,10 @@ impl IdCache {
     pub fn reset(&self) {
         self.top_id.store(0, Ordering::Release);
         self.free_ids.write().unwrap().clear();
+    }
+
+    pub fn free_ids_num(&self) -> usize {
+        self.free_ids.read().unwrap().len()
     }
 }
 
@@ -151,6 +162,35 @@ mod tests {
         assert_eq!(new_id, 3);
         assert_eq!(cache.top_id.load(Ordering::Acquire), 4);
         assert!(cache.free_ids.read().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_id_cache_with_capacity() {
+        let capacity = 10;
+        let cache = IdCache::with_capacity(capacity);
+        assert_eq!(cache.top_id.load(Ordering::Acquire), capacity);
+        assert_eq!(*cache.free_ids.read().unwrap(), vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(cache.free_ids_num(), capacity);
+
+        for i in (0..capacity).rev() {
+            cache.acquire_id();
+            assert_eq!(*cache.free_ids.read().unwrap(), (0..i).collect::<Vec<_>>());
+            assert_eq!(cache.free_ids_num(), i);
+        }
+
+        assert_eq!(cache.top_id.load(Ordering::Acquire), capacity);
+        assert_eq!(*cache.free_ids.read().unwrap(), vec![]);
+        assert_eq!(cache.free_ids_num(), 0);
+
+        let new_id = cache.acquire_id();
+        assert_eq!(new_id, capacity);
+        assert_eq!(cache.top_id.load(Ordering::Acquire), capacity + 1);
+        assert_eq!(cache.free_ids_num(), 0);
+
+        cache.release_id(9);
+        assert_eq!(cache.top_id.load(Ordering::Acquire), capacity + 1);
+        assert_eq!(*cache.free_ids.read().unwrap(), vec![9]);
+        assert_eq!(cache.free_ids_num(), 1);
     }
 
     #[test]
