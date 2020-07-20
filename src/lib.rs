@@ -22,7 +22,7 @@ impl IdCache {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             top_id: capacity.into(),
-            free_ids: RwLock::new((0..capacity).collect())
+            free_ids: RwLock::new((0..capacity).rev().collect())
         }
     }
 
@@ -69,7 +69,7 @@ impl<T> Storage<T> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             data: Vec::with_capacity(capacity),
-            id_cache: IdCache::new()
+            id_cache: IdCache::with_capacity(capacity)
         }
     }
 
@@ -78,6 +78,13 @@ impl<T> Storage<T> {
         self.insert_with_id(id, new_data);
 
         id
+    }
+
+    pub fn try_insert(&mut self, new_data: T) -> Option<Id> {
+        self.id_cache.try_acquire_id().map(|id| {
+            self.insert_with_id(id, new_data);
+            id
+        })
     }
 
     pub fn insert_with_id(&mut self, id: Id, new_data: T) {
@@ -101,14 +108,6 @@ impl<T> Storage<T> {
 
     pub fn remove(&self, id: Id) {
         self.id_cache.release_id(id);
-    }
-
-    pub fn reset_ids(&self) {
-        self.id_cache.reset();
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.id_cache.top_id.load(Ordering::Acquire) == 0
     }
 
     pub fn data(&self) -> &Vec<T> {
@@ -175,13 +174,13 @@ mod tests {
         let capacity = 10;
         let cache = IdCache::with_capacity(capacity);
         assert_eq!(cache.top_id.load(Ordering::Acquire), capacity);
-        assert_eq!(*cache.free_ids.read().unwrap(), vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(*cache.free_ids.read().unwrap(), vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
         assert_eq!(cache.free_ids_num(), capacity);
 
-        for i in (0..capacity).rev() {
+        for i in 1..=capacity {
             cache.acquire_id();
-            assert_eq!(*cache.free_ids.read().unwrap(), (0..i).collect::<Vec<_>>());
-            assert_eq!(cache.free_ids_num(), i);
+            assert_eq!(*cache.free_ids.read().unwrap(), (i..capacity).rev().collect::<Vec<_>>());
+            assert_eq!(cache.free_ids_num(), capacity - i);
         }
 
         assert_eq!(cache.top_id.load(Ordering::Acquire), capacity);
@@ -215,14 +214,12 @@ mod tests {
     #[test]
     fn test_storage() {
         let mut storage = Storage::new();
-        assert!(storage.is_empty());
         assert_eq!(storage.data.len(), 0);
         assert_eq!(*storage.data(), vec![]);
 
 
         let id = storage.insert(42);
         assert_eq!(id, 0);
-        assert!(!storage.is_empty());
         assert_eq!(storage.data.len(), 1);
         assert_eq!(*storage.get(id), 42);
         *storage.get_mut(id) *= 2;
@@ -233,7 +230,6 @@ mod tests {
 
         let id = storage.insert(111);
         assert_eq!(id, 1);
-        assert!(!storage.is_empty());
         assert_eq!(storage.data.len(), 2);
         assert_eq!(*storage.get(id), 111);
         *storage.get_mut(id) *= 2;
@@ -241,37 +237,46 @@ mod tests {
         assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
 
         storage.remove(first_id);
-        assert!(!storage.is_empty());
         assert_eq!(storage.data.len(), 2);
         assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
 
         let id = storage.insert(10);
         assert_eq!(id, 0);
-        assert!(!storage.is_empty());
         assert_eq!(storage.data.len(), 2);
         assert_eq!(*storage.get(id), 10);
         *storage.get_mut(id) *= 2;
         assert_eq!(*storage.get(id), 10 * 2);
         assert_eq!(*storage.data(), vec![10 * 2, 111 * 2]);
 
-        storage.reset_ids();
-        assert!(storage.is_empty());
-        assert_eq!(storage.data.len(), 2);
-        assert_eq!(*storage.data(), vec![10 * 2, 111 * 2]);
-
-        let id = storage.insert(42);
-        assert_eq!(id, 0);
-        assert!(!storage.is_empty());
-        assert_eq!(storage.data.len(), 2);
-        assert_eq!(*storage.get(id), 42);
-        *storage.get_mut(id) *= 2;
-        assert_eq!(*storage.get(id), 42 * 2);
-        assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
-
         let storage = Storage::<i32>::with_capacity(10);
-        assert!(storage.is_empty());
         assert_eq!(storage.data.capacity(), 10);
         assert_eq!(storage.data.len(), 0);
         assert_eq!(*storage.data(), vec![]);
+    }
+
+    #[test]
+    fn test_storage_try_insert() {
+        let mut storage = Storage::with_capacity(3);
+        let id = storage.try_insert(0);
+        assert!(id.is_some());
+        assert_eq!(*storage.get(id.unwrap()), 0);
+
+        let id = storage.try_insert(1);
+        assert!(id.is_some());
+        assert_eq!(*storage.get(id.unwrap()), 1);
+
+        let id = storage.try_insert(2);
+        assert!(id.is_some());
+        assert_eq!(*storage.get(id.unwrap()), 2);
+        let last_id = id.unwrap();
+
+        let id = storage.try_insert(3);
+        assert!(id.is_none());
+
+        storage.remove(last_id);
+
+        let id = storage.try_insert(3);
+        assert!(id.is_some());
+        assert_eq!(*storage.get(id.unwrap()), 3);
     }
 }
