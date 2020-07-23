@@ -113,6 +113,10 @@ impl<T> Storage<T> {
     pub fn data(&self) -> &Vec<T> {
         &self.data
     }
+
+    pub unsafe fn into_vec(self) -> Vec<T> {
+        self.data
+    }
 }
 
 
@@ -278,5 +282,22 @@ mod tests {
         let id = storage.try_insert(3);
         assert!(id.is_some());
         assert_eq!(*storage.get(id.unwrap()), 3);
+    }
+
+    #[test]
+    fn test_storage_into_vec() {
+        let mut storage = Storage::new();
+        let range = 0..5;
+        let expected = range.clone().collect::<Vec<_>>();
+
+        for i in range {
+            storage.insert(i);
+        }
+
+        let stored = unsafe {
+            storage.into_vec()
+        };
+
+        assert_eq!(stored, expected);
     }
 }
