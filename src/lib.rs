@@ -1,6 +1,9 @@
-use std::sync::{
-    RwLock,
-    atomic::{AtomicUsize, Ordering}
+use std::{
+    sync::{
+        RwLock,
+        atomic::{AtomicUsize, Ordering}
+    },
+    iter::Extend
 };
 
 pub type Id = usize;
@@ -116,6 +119,14 @@ impl<T> Storage<T> {
 
     pub unsafe fn into_vec(self) -> Vec<T> {
         self.data
+    }
+}
+
+impl<T> Extend<T> for Storage<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for item in iter {
+            self.insert(item);
+        }
     }
 }
 
@@ -299,5 +310,18 @@ mod tests {
         };
 
         assert_eq!(stored, expected);
+    }
+
+    #[test]
+    fn test_storage_extend() {
+        let mut storage = Storage::with_capacity(5);
+        storage.extend(vec![1, 2, 3]);
+
+        assert_eq!(storage.data, vec![1, 2, 3]);
+        assert_eq!(*storage.id_cache.free_ids.read().unwrap(), vec![4, 3]);
+
+        storage.extend(vec![4, 5, 6]);
+        assert_eq!(storage.data, vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(*storage.id_cache.free_ids.read().unwrap(), vec![]);
     }
 }
