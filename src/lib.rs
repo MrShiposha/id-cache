@@ -76,12 +76,12 @@ impl IdCache {
     }
 }
 
-pub struct Storage<T> {
+pub struct CacheStorage<T> {
     data: Vec<T>,
     id_cache: IdCache,
 }
 
-impl<T> Storage<T> {
+impl<T> CacheStorage<T> {
     pub fn new() -> Self {
         Self {
             data: Vec::default(),
@@ -164,7 +164,7 @@ impl<T> Storage<T> {
     }
 }
 
-impl<T> Extend<T> for Storage<T> {
+impl<T> Extend<T> for CacheStorage<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for item in iter {
             self.insert(item);
@@ -175,7 +175,7 @@ impl<T> Extend<T> for Storage<T> {
 #[cfg(test)]
 mod tests {
     use {
-        crate::{IdCache, Storage},
+        crate::{IdCache, CacheStorage},
         std::{collections::HashSet, iter::FromIterator, sync::atomic::Ordering},
     };
 
@@ -302,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn test_storage() {
+    fn test_cache_storage() {
         macro_rules! collect_data {
             ($storage:expr) => {
                 unsafe {
@@ -314,7 +314,7 @@ mod tests {
             };
         }
 
-        let mut storage: Storage<usize> = Storage::new();
+        let mut storage: CacheStorage<usize> = CacheStorage::new();
 
         assert_eq!(storage.data.len(), 0);
         assert_eq!(collect_data![storage], vec![]);
@@ -356,15 +356,15 @@ mod tests {
             vec![(first_id, 10 * 2), (second_id, 111 * 2)]
         );
 
-        let storage = Storage::<i32>::with_capacity(10);
+        let storage = CacheStorage::<i32>::with_capacity(10);
         assert_eq!(storage.data.capacity(), 10);
         assert_eq!(storage.data.len(), 0);
         assert_eq!(collect_data![storage], vec![]);
     }
 
     #[test]
-    fn test_storage_try_insert() {
-        let mut storage = Storage::with_capacity(3);
+    fn test_cache_storage_try_insert() {
+        let mut storage = CacheStorage::with_capacity(3);
         let id = storage.try_insert(0);
         assert!(id.is_some());
         assert_eq!(*storage.get(id.unwrap()), 0);
@@ -389,8 +389,8 @@ mod tests {
     }
 
     #[test]
-    fn test_storage_into_vec() {
-        let mut storage = Storage::new();
+    fn test_cache_storage_into_vec() {
+        let mut storage = CacheStorage::new();
         let range = 0..5;
         let expected = range.clone().collect::<Vec<_>>();
 
@@ -404,8 +404,8 @@ mod tests {
     }
 
     #[test]
-    fn test_storage_extend() {
-        let mut storage = Storage::with_capacity(5);
+    fn test_cache_storage_extend() {
+        let mut storage = CacheStorage::with_capacity(5);
         storage.extend(vec![1, 2, 3]);
 
         assert_eq!(storage.data, vec![1, 2, 3]);
