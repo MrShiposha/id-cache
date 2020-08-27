@@ -148,10 +148,17 @@ impl<T> Storage<T> {
         self.id_cache.release_ids(ids);
     }
 
-    pub fn data(&self) -> &Vec<T> {
-        &self.data
+    /// # Safety
+    /// It is safe to call this function,
+    /// but several removed elements may still stay in the collection,
+    /// so the corresponding ids were released.
+    pub unsafe fn iter(&self) -> impl Iterator<Item = (Id, &T)> {
+        self.data.iter().enumerate()
     }
 
+    /// # Safety
+    /// It is safe to call this function,
+    /// but several removed elements may still stay in the vector.
     pub unsafe fn into_vec(self) -> Vec<T> {
         self.data
     }
@@ -296,44 +303,63 @@ mod tests {
 
     #[test]
     fn test_storage() {
-        let mut storage = Storage::new();
+        macro_rules! collect_data {
+            ($storage:expr) => {
+                unsafe {
+                    $storage
+                        .iter()
+                        .map(|(id, data)| (id, data.clone()))
+                        .collect::<Vec<_>>()
+                }
+            };
+        }
+
+        let mut storage: Storage<usize> = Storage::new();
+
         assert_eq!(storage.data.len(), 0);
-        assert_eq!(*storage.data(), vec![]);
+        assert_eq!(collect_data![storage], vec![]);
 
-        let id = storage.insert(42);
-        assert_eq!(id, 0);
+        let first_id = storage.insert(42);
+        assert_eq!(first_id, 0);
         assert_eq!(storage.data.len(), 1);
-        assert_eq!(*storage.get(id), 42);
-        *storage.get_mut(id) *= 2;
-        assert_eq!(*storage.get(id), 42 * 2);
-        assert_eq!(*storage.data(), vec![42 * 2]);
+        assert_eq!(*storage.get(first_id), 42);
+        *storage.get_mut(first_id) *= 2;
+        assert_eq!(*storage.get(first_id), 42 * 2);
+        assert_eq!(collect_data![storage], vec![(first_id, 42 * 2)]);
 
-        let first_id = id;
-
-        let id = storage.insert(111);
-        assert_eq!(id, 1);
+        let second_id = storage.insert(111);
+        assert_eq!(second_id, 1);
         assert_eq!(storage.data.len(), 2);
-        assert_eq!(*storage.get(id), 111);
-        *storage.get_mut(id) *= 2;
-        assert_eq!(*storage.get(id), 111 * 2);
-        assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
+        assert_eq!(*storage.get(second_id), 111);
+        *storage.get_mut(second_id) *= 2;
+        assert_eq!(*storage.get(second_id), 111 * 2);
+        assert_eq!(
+            collect_data![storage],
+            vec![(first_id, 42 * 2), (second_id, 111 * 2)]
+        );
 
         unsafe { storage.remove(first_id) }
         assert_eq!(storage.data.len(), 2);
-        assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
+        assert_eq!(
+            collect_data![storage],
+            vec![(first_id, 42 * 2), (second_id, 111 * 2)]
+        );
 
-        let id = storage.insert(10);
-        assert_eq!(id, 0);
+        let first_id = storage.insert(10);
+        assert_eq!(first_id, 0);
         assert_eq!(storage.data.len(), 2);
-        assert_eq!(*storage.get(id), 10);
-        *storage.get_mut(id) *= 2;
-        assert_eq!(*storage.get(id), 10 * 2);
-        assert_eq!(*storage.data(), vec![10 * 2, 111 * 2]);
+        assert_eq!(*storage.get(first_id), 10);
+        *storage.get_mut(first_id) *= 2;
+        assert_eq!(*storage.get(first_id), 10 * 2);
+        assert_eq!(
+            collect_data![storage],
+            vec![(first_id, 10 * 2), (second_id, 111 * 2)]
+        );
 
         let storage = Storage::<i32>::with_capacity(10);
         assert_eq!(storage.data.capacity(), 10);
         assert_eq!(storage.data.len(), 0);
-        assert_eq!(*storage.data(), vec![]);
+        assert_eq!(collect_data![storage], vec![]);
     }
 
     #[test]
