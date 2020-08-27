@@ -1,9 +1,9 @@
 use std::{
+    iter::Extend,
     sync::{
+        atomic::{AtomicUsize, Ordering},
         RwLock,
-        atomic::{AtomicUsize, Ordering}
     },
-    iter::Extend
 };
 
 pub type Id = usize;
@@ -11,28 +11,28 @@ pub type Id = usize;
 #[derive(Debug)]
 pub struct IdCache {
     top_id: AtomicUsize,
-    free_ids: RwLock<Vec<Id>>
+    free_ids: RwLock<Vec<Id>>,
 }
 
 impl IdCache {
     pub fn new() -> Self {
         Self {
             top_id: AtomicUsize::new(0),
-            free_ids: RwLock::default()
+            free_ids: RwLock::default(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             top_id: capacity.into(),
-            free_ids: RwLock::new((0..capacity).rev().collect())
+            free_ids: RwLock::new((0..capacity).rev().collect()),
         }
     }
 
     pub fn acquire_id(&self) -> Id {
         match self.try_acquire_id() {
             Some(id) => id,
-            None => self.top_id.fetch_add(1, Ordering::AcqRel)
+            None => self.top_id.fetch_add(1, Ordering::AcqRel),
         }
     }
 
@@ -40,10 +40,30 @@ impl IdCache {
         self.free_ids.write().unwrap().pop()
     }
 
-    pub fn release_id(&self, id: Id) {
+    /// # Safety
+    /// `id` must not be already released.
+    ///
+    /// # Panics
+    /// When `id >= self.top_id`.
+    pub unsafe fn release_id(&self, id: Id) {
         assert!(id < self.top_id.load(Ordering::Acquire));
 
         self.free_ids.write().unwrap().push(id);
+    }
+
+    /// # Safety
+    /// `ids` must contain only unique elements.
+    /// If `ids` contain duplicates - behavior is undefined.
+    ///
+    /// # Panics
+    /// When some `id` from the `ids` is >= `self.top_id`.
+    pub unsafe fn release_ids<I: IntoIterator<Item = Id>>(&self, ids: I) {
+        let ids = ids.into_iter();
+        let mut free_ids = self.free_ids.write().unwrap();
+
+        free_ids.extend(ids.inspect(|&id| {
+            assert!(id < self.top_id.load(Ordering::Acquire));
+        }));
     }
 
     pub fn reset(&self) {
@@ -58,21 +78,21 @@ impl IdCache {
 
 pub struct Storage<T> {
     data: Vec<T>,
-    id_cache: IdCache
+    id_cache: IdCache,
 }
 
 impl<T> Storage<T> {
     pub fn new() -> Self {
         Self {
             data: Vec::default(),
-            id_cache: IdCache::new()
+            id_cache: IdCache::new(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             data: Vec::with_capacity(capacity),
-            id_cache: IdCache::with_capacity(capacity)
+            id_cache: IdCache::with_capacity(capacity),
         }
     }
 
@@ -109,8 +129,23 @@ impl<T> Storage<T> {
         &mut self.data[id]
     }
 
-    pub fn remove(&self, id: Id) {
+    /// # Safety
+    /// `id` must not be already released.
+    ///
+    /// # Panics
+    /// When `id` is greater than the last allocated id.
+    pub unsafe fn remove(&self, id: Id) {
         self.id_cache.release_id(id);
+    }
+
+    /// # Safety
+    /// `ids` must contain only unique elements.
+    /// If `ids` contain duplicates - behavior is undefined.
+    ///
+    /// # Panics
+    /// When some `id` from the `ids` is greater than the last allocated id.
+    pub unsafe fn remove_chunk<I: IntoIterator<Item = Id>>(&self, ids: I) {
+        self.id_cache.release_ids(ids);
     }
 
     pub fn data(&self) -> &Vec<T> {
@@ -130,17 +165,15 @@ impl<T> Extend<T> for Storage<T> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use {
-        std::sync::atomic::Ordering,
-        crate::{IdCache, Storage}
+        crate::{IdCache, Storage},
+        std::{collections::HashSet, iter::FromIterator, sync::atomic::Ordering},
     };
 
     #[test]
     fn test_id_cache() {
-
         let cache = IdCache::new();
         assert_eq!(cache.top_id.load(Ordering::Acquire), 0);
         assert!(cache.free_ids.read().unwrap().is_empty());
@@ -160,11 +193,11 @@ mod tests {
         assert_eq!(cache.top_id.load(Ordering::Acquire), 3);
         assert!(cache.free_ids.read().unwrap().is_empty());
 
-        cache.release_id(2);
+        unsafe { cache.release_id(2) }
         assert_eq!(cache.top_id.load(Ordering::Acquire), 3);
         assert_eq!(*cache.free_ids.read().unwrap(), vec![2]);
 
-        cache.release_id(1);
+        unsafe { cache.release_id(1) }
         assert_eq!(cache.top_id.load(Ordering::Acquire), 3);
         assert_eq!(*cache.free_ids.read().unwrap(), vec![2, 1]);
 
@@ -185,16 +218,51 @@ mod tests {
     }
 
     #[test]
+    fn test_id_cache_remove_ids() {
+        let cache = IdCache::new();
+
+        let mut ids = vec![];
+
+        ids.push(cache.acquire_id());
+
+        ids.push(cache.acquire_id());
+
+        ids.push(cache.acquire_id());
+
+        ids.push(cache.acquire_id());
+
+        ids.push(cache.acquire_id());
+
+        unsafe { cache.release_ids(ids.clone()) }
+
+        let mut new_ids = vec![];
+        for _ in 0..ids.len() {
+            new_ids.push(cache.acquire_id())
+        }
+
+        let ids: HashSet<_> = HashSet::from_iter(ids);
+        let new_ids = HashSet::from_iter(new_ids);
+
+        assert_eq!(new_ids, ids);
+    }
+
+    #[test]
     fn test_id_cache_with_capacity() {
         let capacity = 10;
         let cache = IdCache::with_capacity(capacity);
         assert_eq!(cache.top_id.load(Ordering::Acquire), capacity);
-        assert_eq!(*cache.free_ids.read().unwrap(), vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+        assert_eq!(
+            *cache.free_ids.read().unwrap(),
+            vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+        );
         assert_eq!(cache.free_ids_num(), capacity);
 
         for i in 1..=capacity {
             cache.acquire_id();
-            assert_eq!(*cache.free_ids.read().unwrap(), (i..capacity).rev().collect::<Vec<_>>());
+            assert_eq!(
+                *cache.free_ids.read().unwrap(),
+                (i..capacity).rev().collect::<Vec<_>>()
+            );
             assert_eq!(cache.free_ids_num(), capacity - i);
         }
 
@@ -207,7 +275,7 @@ mod tests {
         assert_eq!(cache.top_id.load(Ordering::Acquire), capacity + 1);
         assert_eq!(cache.free_ids_num(), 0);
 
-        cache.release_id(9);
+        unsafe { cache.release_id(9) }
         assert_eq!(cache.top_id.load(Ordering::Acquire), capacity + 1);
         assert_eq!(*cache.free_ids.read().unwrap(), vec![9]);
         assert_eq!(cache.free_ids_num(), 1);
@@ -220,7 +288,7 @@ mod tests {
         assert!(cache.try_acquire_id().is_none());
 
         let src_id = cache.acquire_id();
-        cache.release_id(src_id);
+        unsafe { cache.release_id(src_id) }
         let freed_id = cache.try_acquire_id();
         assert!(freed_id.is_some());
         assert_eq!(freed_id.unwrap(), src_id);
@@ -231,7 +299,6 @@ mod tests {
         let mut storage = Storage::new();
         assert_eq!(storage.data.len(), 0);
         assert_eq!(*storage.data(), vec![]);
-
 
         let id = storage.insert(42);
         assert_eq!(id, 0);
@@ -251,7 +318,7 @@ mod tests {
         assert_eq!(*storage.get(id), 111 * 2);
         assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
 
-        storage.remove(first_id);
+        unsafe { storage.remove(first_id) }
         assert_eq!(storage.data.len(), 2);
         assert_eq!(*storage.data(), vec![42 * 2, 111 * 2]);
 
@@ -288,7 +355,7 @@ mod tests {
         let id = storage.try_insert(3);
         assert!(id.is_none());
 
-        storage.remove(last_id);
+        unsafe { storage.remove(last_id) }
 
         let id = storage.try_insert(3);
         assert!(id.is_some());
@@ -305,9 +372,7 @@ mod tests {
             storage.insert(i);
         }
 
-        let stored = unsafe {
-            storage.into_vec()
-        };
+        let stored = unsafe { storage.into_vec() };
 
         assert_eq!(stored, expected);
     }
