@@ -1,4 +1,9 @@
-use {super::id_cache::*, std::iter::Extend};
+use {
+    super::{
+        id_cache::*, Id
+    },
+    std::iter::Extend
+};
 
 pub struct CacheStorage<T> {
     data: Vec<T>,
@@ -53,12 +58,11 @@ impl<T> CacheStorage<T> {
         &mut self.data[id]
     }
 
-    /// # Safety
-    /// `id` must not be already released.
-    ///
     /// # Panics
-    /// When `id` is greater than the last allocated id.
-    pub unsafe fn remove(&mut self, id: Id) {
+    /// [DEBUG CFG]
+    /// * If `id` is greater than the last allocated id.
+    /// * If `id` was already released
+    pub fn remove(&mut self, id: Id) {
         self.id_cache.release_id(id);
     }
 
@@ -137,7 +141,7 @@ mod tests {
             vec![(first_id, 42 * 2), (second_id, 111 * 2)]
         );
 
-        unsafe { storage.remove(first_id) }
+        storage.remove(first_id);
         assert_eq!(storage.data.len(), 2);
         assert_eq!(
             collect_data![storage],
@@ -180,7 +184,7 @@ mod tests {
         let id = storage.try_insert(3);
         assert!(id.is_none());
 
-        unsafe { storage.remove(last_id) }
+        storage.remove(last_id);
 
         let id = storage.try_insert(3);
         assert!(id.is_some());

@@ -1,4 +1,4 @@
-pub type Id = usize;
+use super::Id;
 
 #[derive(Debug)]
 pub struct IdCache {
@@ -37,13 +37,16 @@ impl IdCache {
         self.free_ids.pop()
     }
 
-    /// # Safety
-    /// `id` must not be already released.
-    ///
     /// # Panics
-    /// When `id >= self.top_id`.
-    pub unsafe fn release_id(&mut self, id: Id) {
-        assert!(id < self.top_id);
+    /// [DEBUG CFG]
+    /// * If `id >= self.top_id`
+    /// * If `id` was already released
+    pub fn release_id(&mut self, id: Id) {
+        debug_assert!(
+            self.free_ids.iter().find(|&&free_id| free_id == id).is_none(),
+            "id double release"
+        );
+        debug_assert!(id < self.top_id);
 
         self.free_ids.push(id);
     }
@@ -53,13 +56,14 @@ impl IdCache {
     /// If `ids` contain duplicates - behavior is undefined.
     ///
     /// # Panics
+    /// [DEBUG CFG]
     /// When some `id` from the `ids` is >= `self.top_id`.
     pub unsafe fn release_ids<I: IntoIterator<Item = Id>>(&mut self, ids: I) {
         let ids = ids.into_iter();
 
         let top_id = self.top_id;
         self.free_ids.extend(ids.inspect(|&id| {
-            assert!(id < top_id);
+            debug_assert!(id < top_id);
         }));
     }
 
@@ -101,11 +105,11 @@ mod tests {
         assert_eq!(cache.top_id, 3);
         assert!(cache.free_ids.is_empty());
 
-        unsafe { cache.release_id(2) }
+        cache.release_id(2);
         assert_eq!(cache.top_id, 3);
         assert_eq!(cache.free_ids, vec![2]);
 
-        unsafe { cache.release_id(1) }
+        cache.release_id(1);
         assert_eq!(cache.top_id, 3);
         assert_eq!(cache.free_ids, vec![2, 1]);
 
@@ -183,7 +187,7 @@ mod tests {
         assert_eq!(cache.top_id, capacity + 1);
         assert_eq!(cache.free_ids_num(), 0);
 
-        unsafe { cache.release_id(9) }
+        cache.release_id(9);
         assert_eq!(cache.top_id, capacity + 1);
         assert_eq!(cache.free_ids, vec![9]);
         assert_eq!(cache.free_ids_num(), 1);
@@ -196,7 +200,7 @@ mod tests {
         assert!(cache.try_acquire_id().is_none());
 
         let src_id = cache.acquire_id();
-        unsafe { cache.release_id(src_id) }
+        cache.release_id(src_id);
         let freed_id = cache.try_acquire_id();
         assert!(freed_id.is_some());
         assert_eq!(freed_id.unwrap(), src_id);
