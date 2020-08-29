@@ -80,8 +80,8 @@ impl<T> ShrinkableStorage<T> {
         self.data.iter().enumerate()
     }
 
-    pub fn copy_ids(&self) -> Vec<Id> {
-        (0..self.data.len()).collect()
+    pub fn iter_ids(&self) -> impl Iterator<Item=Id> {
+        0..self.data.len()
     }
 }
 
