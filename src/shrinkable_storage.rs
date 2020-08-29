@@ -24,6 +24,14 @@ impl<T> ShrinkableStorage<T> {
         }
     }
 
+    pub fn volume(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     pub fn insert(&mut self, obj: T) -> Id {
         let id = self.data.len();
         self.data.push(obj);
@@ -108,7 +116,12 @@ mod tests {
         let new_data: HashSet<_> = [1, 2,    4,       7, 8   ].iter().collect();
 
         let mut storage = ShrinkableStorage::new();
+        assert!(storage.is_empty());
+        assert_eq!(storage.volume(), 0);
+
         storage.extend(src_data.clone());
+        assert!(!storage.is_empty());
+        assert_eq!(storage.volume(), src_data.len());
 
         let stored_data: HashSet<_> = storage.iter()
             .map(|(_id, obj)| obj.clone())
@@ -140,6 +153,8 @@ mod tests {
         storage.free_id(remove_id);
 
         assert_eq!(storage.free_ids.len(), 4);
+        assert!(!storage.is_empty());
+        assert_eq!(storage.volume(), src_data.len());
 
         let new_storage = storage.shrink();
         let stored_data: HashSet<_> = new_storage.iter()
@@ -148,6 +163,10 @@ mod tests {
 
         assert_eq!(stored_data, new_data);
         assert_eq!(storage.free_ids.len(), 4);
+        assert!(!storage.is_empty());
+        assert_eq!(storage.volume(), src_data.len());
         assert!(new_storage.free_ids.is_empty());
+        assert!(!new_storage.is_empty());
+        assert_eq!(new_storage.volume(), new_data.len());
     }
 }
