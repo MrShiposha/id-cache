@@ -1,5 +1,5 @@
 [package]
-name = "id-cache"
+name = "id-storage"
 version = "0.1.0"
 authors = ["Daniel Shiposha <shipdan@yandex.ru>"]
 edition = "2018"
