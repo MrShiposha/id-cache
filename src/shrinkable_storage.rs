@@ -76,6 +76,10 @@ impl<T> ShrinkableStorage<T> {
         }));
     }
 
+    pub fn restore_freed(&mut self) {
+        self.free_ids.clear();
+    }
+
     pub fn iter(&self) -> impl Iterator<Item=(Id, &T)> {
         self.data.iter().enumerate()
     }
