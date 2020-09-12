@@ -76,6 +76,15 @@ impl<T> ShrinkableStorage<T> {
         }));
     }
 
+    /// # Safety
+    /// This function will not free the ids.
+    pub unsafe fn retain<P>(&mut self, predicate: P)
+    where
+        P: FnMut(&T) -> bool
+    {
+        self.data.retain(predicate);
+    }
+
     pub fn restore_freed(&mut self) {
         self.free_ids.clear();
     }
