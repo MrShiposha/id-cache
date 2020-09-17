@@ -1,26 +1,29 @@
 use {
     super::Id,
-    std::iter::Extend
+    std::{
+        iter::Extend,
+        collections::BTreeSet,
+    }
 };
 
 #[derive(Debug, Clone)]
 pub struct ShrinkableStorage<T> {
     data: Vec<T>,
-    free_ids: Vec<Id>
+    free_ids: BTreeSet<Id>
 }
 
 impl<T> ShrinkableStorage<T> {
     pub fn new() -> Self {
         Self {
             data: vec![],
-            free_ids: vec![],
+            free_ids: BTreeSet::new(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             data: Vec::with_capacity(capacity),
-            free_ids: vec![],
+            free_ids: BTreeSet::new(),
         }
     }
 
@@ -50,15 +53,10 @@ impl<T> ShrinkableStorage<T> {
     /// # Panics
     /// [DEBUG CFG]
     /// * If `id >= self.data.len()`
-    /// * If `id` was already released
     pub fn free_id(&mut self, id: Id) {
-        debug_assert!(
-            self.free_ids.iter().find(|&&free_id| free_id == id).is_none(),
-            "id double free"
-        );
         debug_assert!(id < self.data.len());
 
-        self.free_ids.push(id);
+        self.free_ids.insert(id);
     }
 
     /// # Safety
@@ -105,10 +103,12 @@ impl<T: Clone> ShrinkableStorage<T> {
     pub fn shrink(&self) -> Self {
         let mut storage = self.clone();
 
-        storage.free_ids.sort_unstable();
-        while let Some(id) = storage.free_ids.pop() {
+        let mut iter = storage.free_ids.iter();
+        while let Some(&id) = iter.next_back() {
             storage.data.swap_remove(id);
         }
+
+        storage.free_ids.clear();
 
         storage
     }
