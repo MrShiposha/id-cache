@@ -59,19 +59,19 @@ impl<T> ShrinkableStorage<T> {
         self.free_ids.insert(id);
     }
 
-    /// # Safety
-    /// `ids` must contain only unique elements.
-    /// If `ids` contain duplicates - behavior is undefined.
-    ///
     /// # Panics
     /// When some `id` from the `ids` is greater than the last allocated id.
-    pub unsafe fn free_ids(&mut self, ids: impl IntoIterator<Item=Id>) {
+    pub fn free_ids(&mut self, ids: impl IntoIterator<Item=Id>) {
         let ids = ids.into_iter();
 
         let last_id = self.data.len();
         self.free_ids.extend(ids.inspect(|&id| {
             debug_assert!(id < last_id);
         }));
+    }
+
+    pub fn is_id_free(&mut self, id: &Id) -> bool {
+        self.free_ids.contains(id)
     }
 
     /// # Safety
@@ -124,7 +124,10 @@ impl<T> Extend<T> for ShrinkableStorage<T> {
 mod tests {
     use {
         crate::ShrinkableStorage,
-        std::collections::HashSet
+        std::{
+            collections::HashSet,
+            iter::once,
+        }
     };
 
     #[test]
@@ -153,9 +156,7 @@ mod tests {
             })
             .collect();
 
-        unsafe {
-            storage.free_ids(remove_ids);
-        }
+        storage.free_ids(remove_ids.clone());
 
         assert_eq!(storage.free_ids.len(), 3);
 
@@ -168,6 +169,10 @@ mod tests {
             .unwrap();
 
         storage.free_id(remove_id);
+
+        for id in remove_ids.iter().chain(once(&remove_id)) {
+            assert!(storage.is_id_free(id));
+        }
 
         assert_eq!(storage.free_ids.len(), 4);
         assert!(!storage.is_empty());
