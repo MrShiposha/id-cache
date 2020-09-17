@@ -70,7 +70,7 @@ impl<T> ShrinkableStorage<T> {
         }));
     }
 
-    pub fn is_id_free(&mut self, id: &Id) -> bool {
+    pub fn is_id_free(&self, id: &Id) -> bool {
         self.free_ids.contains(id)
     }
 
